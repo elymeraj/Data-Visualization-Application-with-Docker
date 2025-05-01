@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+  <meta name="description" content="Liste des prestations" />
+  <meta charset="utf-8">
+  <title>Prestations</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="author" content="Eldis Ymeraj et Redwan Omari">
+  <link rel="stylesheet" href="css/style.css">
+  <link href="https://cdn.jsdelivr.net/npm/bootswatch@5.3.2/dist/morph/bootstrap.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+</head>
+
+<body>
+  <nav class="nav mb-4 nav-pills flex-column flex-sm-row">
+    <a class="link-dark flex-sm-fill text-lg-center nav-link" href="index.html">Index</a>
+    <a class="link-dark flex-sm-fill text-lg-center nav-link" href="france.html">France</a>
+    <a class="link-dark flex-sm-fill text-lg-center nav-link" href="prestation.html">Préstation</a>
+    <a class="link-dark flex-sm-fill text-lg-center nav-link" href="regions.html">Région</a>
+    <a class="link-dark flex-sm-fill text-lg-center nav-link" href="departements.html">Departments</a>
+  </nav>
+
+  <div class="container mb-4">
+    <h2 class="text-center">Liste des Prestations</h2>
+    <p class="text-center">
+      Cette section présente les prestations disponibles triées par description, nombre et somme totale.
+    </p>
+  </div>
+
+  <div class="container">
+    <div class="d-flex justify-content-center gap-3 mb-3">
+        <button class="btn btn-primary" onclick="sortByDescription()">Trier par Description</button>
+        <button class="btn btn-primary" onclick="sortByCount()">Trier par Nombre</button>
+        <button class="btn btn-primary" onclick="sortBySum()">Trier par Somme</button>
+    </div>
+
+    <div id="content" class="row gy-3"> </div>
+  </div>
+
+  <script src="js/d3.min.js"></script>
+  <script>
+    let prestations;
+    let prestationsDescriptionSort = "down";
+    let prestationsCountSort = "down";
+    let prestationsSumSort = "down";
+
+    function sortByDescription() {
+      if (prestationsDescriptionSort == "down") {
+        prestations.sort((a, b) => d3.ascending(a.description, b.description));
+        prestationsDescriptionSort = "up";
+      } else {
+        prestations.sort((a, b) => d3.descending(a.description, b.description));
+        prestationsDescriptionSort = "down";
+      }
+
+      updateContent();
+    }
+
+    function sortByCount() {
+      if (prestationsCountSort == "down") {
+        prestations.sort((a, b) => d3.ascending(a.count, b.count));
+        prestationsCountSort = "up";
+      } else {
+        prestations.sort((a, b) => d3.descending(a.count, b.count));
+        prestationsCountSort = "down";
+      }
+
+      updateContent();
+    }
+
+    function sortBySum() {
+      if (prestationsSumSort == "down") {
+        prestations.sort((a, b) => d3.ascending(a.sum, b.sum));
+        prestationsSumSort = "up";
+      } else {
+        prestations.sort((a, b) => d3.descending(a.sum, b.sum));
+        prestationsSumSort = "down";
+      }
+
+      updateContent();
+    }
+
+    function updateContent() {
+      const content = d3.select("#content");
+      content.selectAll(".prestation").remove();
+
+      const prestationsDivs = content.selectAll(".prestation")
+        .data(prestations)
+        .join("div")
+        .attr("class", "col-md-4 prestation card p-3 shadow-sm");
+
+      prestationsDivs.append("h5")
+        .attr("class", "prestationDescription text-center mb-3")
+        .text(d => d.description);
+
+      prestationsDivs.append("p")
+        .attr("class", "prestationCount text-center")
+        .text(d => `Nombre : ${d.count}`);
+
+      prestationsDivs.append("p")
+        .attr("class", "prestationSum text-center")
+        .text(d => `Somme : ${d.sum.toFixed(2)} €`);
+    }
+
+    function draw(data) {
+      prestations = data;
+      updateContent();
+    }
+
+    d3.json("http://127.0.0.1:4000/?query={prestations{id description sum count avg}}")
+      .then((response) => draw(response.data.prestations));
+  </script>
+</body>
+
+</html>

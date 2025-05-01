@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta name="description" content="Carte de la France" />
+    <meta name="author" content="Eldis Ymeraj et Redwan Omari">
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>France</title>
+
+    <link href="https://cdn.jsdelivr.net/npm/bootswatch@5.3.2/dist/morph/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="css/colorbrewer.css">
+    <link rel="stylesheet" href="css/style.css">
+
+    <!-- Load d3.js -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="js/d3.v7.min.js"></script>
+    <script src="js/graphqlQueries.js"></script>
+    <script src="js/dataGraph.js"></script>
+    <script src="js/dataDisplay.js"></script>
+    
+</head>
+
+<body>
+    <nav class="nav mb-4 nav-pills flex-column flex-sm-row">
+        <a class="link-dark flex-sm-fill text-lg-center nav-link" href="index.html">Index</a>
+        <a class="link-dark flex-sm-fill text-lg-center nav-link" href="france.html">France</a>
+        <a class="link-dark flex-sm-fill text-lg-center nav-link" href="prestation.html">Préstation</a>
+        <a class="link-dark flex-sm-fill text-lg-center nav-link" href="regions.html">Région</a>
+        <a class="link-dark flex-sm-fill text-lg-center nav-link" href="departements.html">Departments</a>
+    </nav>
+
+    <!-- Create a div where the graph will take place -->
+    <div id="map" class="container mb-4"></div>
+
+    <div class="modal fade" id="departmentModal" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1" aria-labelledby="staticBackdropLabel" aria-hidden="true">
+        <div class="modal-xl modal-dialog modal-fullscreen-lg-down modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h1 class="modal-title fs-5" id="departmentModalLabel"></h1>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" id="departmentModalBody">
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-success" id="annual_trend">Tendances Annuelles</button>
+                    <button type="button" class="btn btn-success" id="monthly_revenue">Revenus Mensuels</button>
+                    <button type="button" class="btn btn-success" onclick="viewDetails()">Détails des Prestations</button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fermer</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let departmentId;
+        const width = 900, height = 800;
+
+        // fortement inspiré de https://www.datavis.fr/d3js/map-population
+        // documentation à https://github.com/d3/d3-geo
+
+        // le générateur de chemin géographique (geographic path generator) 
+        // d3.geoPath est un générateur de forme. Il utilise des données 
+        // GeoJSON qu'il transforme en un chemin SVG
+
+        const path = d3.geoPath();
+
+        // un chemin a besoin d'un type de projection qui définit comment 
+        // des données sphériques sont représentées en deux dimension.
+        // Ici, on utilise la profection conique conforme
+
+        const projection = d3.geoConicConformal() // Lambert-93
+            .center([2.454071, 46.279229]) // Center on France
+            .scale(3800)
+            .translate([width / 2 - 50, height / 2]);
+
+        path.projection(projection);
+
+        // définition du canvas initial
+        const svg = d3.select('#map').append("svg")
+            .attr("id", "svg")
+            .attr("width", width)
+            .attr("height", height)
+            .attr("class", "Purples");
+
+        // on ajoute un élément "departments" 
+        const departments = svg.append("g");
+
+        // on déclare un tableau de promesses qui vont s'enchaîner
+        var promises = [];
+        promises.push(d3.json('data/departments.json'));
+        promises.push(d3.json("http://127.0.0.1:4000/?query={departments{department count}}"));
+
+        // lorsque toutes les promesses sont réalisées :
+        Promise.all(promises).then(function (values) {
+            const geojson = values[0]; // Récupération de la première promesse : le contenu du fichier geoJSON
+            const dpts = values[1].data.departments; // Récupération de la deuxième promesse : les ventes par département
+
+            // ajout des chemins de chaque département
+            var features = departments
+                .selectAll("path")
+                .data(geojson.features)
+                .enter()
+                .append("path")
+                .attr('id', d => "d" + d.properties.CODE_DEPT)
+                .attr("d", path);
+
+            // définition de la fonction de transformation de valeur vers l'intervalle [0,1]
+            var quantile = d3.scaleQuantile()
+                .domain([0, d3.max(dpts, e => +e.count)])
+                .range(d3.range(9));
+
+            var legend = svg.append('g')
+                .attr('transform', 'translate(730, 151)')
+                .attr('id', 'legend');
+
+            // ajoute d'un élément SVG pour afficher la légende
+            legend.selectAll('.colorbar')
+                .data(d3.range(9))
+                .enter().append('svg:rect')
+                .attr('y', d => d * 22 + 'px') 
+                .attr('height', '22px') 
+                .attr('width', '22px') 
+                .attr('x', '0px') 
+                .attr("class", d => "q" + d + "-9");
+
+            var legendScale = d3.scaleLinear()
+                .domain([0, d3.max(dpts, e => +e.count)])
+                .range([0, 9 * 22]);
+
+            var legendAxis = svg.append("g")
+                .attr('transform', 'translate(760, 150)')
+                .call(d3.axisRight(legendScale).ticks(7));
+
+            const zeroPad = (num, places) => String(num).padStart(places, '0');
+
+            dpts.forEach(function (e, i) {
+                d3.select("#d" + zeroPad(e.department, 2))
+                    .attr("class", d => "department q" + quantile(+e.count) + "-9")
+                    .on("mouseover", function (event, d) {
+                        div.transition()
+                            .duration(200)
+                            .style("opacity", .9);
+                        div.html("<b>Numéro de département : </b>" + e.department + "<br>"
+                            + "<b>Nombre de Prestations : </b>" + e.count + "<br>")
+                            .style("left", (event.pageX + 30) + "px")
+                            .style("top", (event.pageY - 30) + "px");
+                    })
+                    .on("mouseout", function (event, d) {
+                        div.style("opacity", 0);
+                        div.html("")
+                            .style("left", "-500px")
+                            .style("top", "-500px");
+                    })
+                    .on("click", (event, d) => handleDepartmentClick(event, d.properties.CODE_DEPT));
+            });
+        });
+        
+        // Append a DIV for the tooltip
+        var div = d3.select("body").append("div")
+            .attr("class", "chart-tooltip")
+            .style("opacity", 0);
+
+        function handleDepartmentClick(event, d) {
+            departmentId = d;
+            const graphqlQuery = visialusationByYear(parseInt(departmentId));
+            d3.json(`http://127.0.0.1:4000/?query=${encodeURIComponent(graphqlQuery)}`)
+                .then(response => {
+                    document.getElementById('departmentModalLabel').innerHTML = "Tendances Annuelles - Département " + departmentId;
+                    document.getElementById('departmentModalBody').innerHTML = "";
+                    multiLineGraph(response.data.departmentByIdForYear, ".modal-body", "Nombre de prestations", "Année");
+                    const myModal = new bootstrap.Modal(document.getElementById('departmentModal'), {});
+                    myModal.show();
+                })
+                .catch(error => console.error(error));
+        }
+
+        function viewDetails() {
+            document.getElementById('departmentModalLabel').innerHTML = "Détails des Prestations - Département " + departmentId;
+            document.getElementById('departmentModalBody').innerHTML = `
+                <div class="mb-3">
+                    <button onclick="sortByDescription()">Trier par description</button>
+                    <button onclick="sortByCount()">Trier par nombre</button>
+                    <button onclick="sortBySum()">Trier par somme</button>
+                </div>
+                <div id="content"></div>`;
+            const graphqlQuery = departmentById(parseInt(departmentId));
+            d3.json(`http://127.0.0.1:4000/?query=${encodeURIComponent(graphqlQuery)}`)
+                .then((response) => draw(response.data.departmentById));
+        }
+
+        document.getElementById('annual_trend').addEventListener('click', function () {
+            const graphqlQuery = visialusationByYear(parseInt(departmentId));
+            d3.json(`http://127.0.0.1:4000/?query=${encodeURIComponent(graphqlQuery)}`)
+                .then(response => {
+                    document.getElementById('departmentModalLabel').innerHTML = "Tendances Annuelles - Département " + departmentId;
+                    document.getElementById('departmentModalBody').innerHTML = "";
+                    multiLineGraph(response.data.departmentByIdForYear, ".modal-body", "Nombre de prestations", "Année");
+                })
+                .catch(error => console.error(error));
+        });
+
+        document.getElementById('monthly_revenue').addEventListener('click', function () {
+            const graphqlQuery = visialusationByMonth(parseInt(departmentId));
+            d3.json(`http://127.0.0.1:4000/?query=${encodeURIComponent(graphqlQuery)}`)
+                .then(response => {
+                    document.getElementById('departmentModalLabel').innerHTML = "Revenus Mensuels - Département " + departmentId;
+                    document.getElementById('departmentModalBody').innerHTML = "";
+                    labelX = "Revenu total";
+                    labelY = "Mois";
+                    multiLineGraphMonth(response.data.departmentByIdForMonth, ".modal-body", labelX, labelY);
+                })
+                .catch(error => console.error(error));
+        });
+    </script>
+</body>
+</html>
